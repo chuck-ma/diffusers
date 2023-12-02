@@ -746,6 +746,7 @@ class StableDiffusionInpaintPipeline(
                 "Since strength < 1. initial latents are to be initialised as a combination of Image + Noise."
                 "However, either the image or the noise timestep has not been provided."
             )
+        print('image_0_shape=', image.shape)
 
         if return_image_latents or (latents is None and not is_strength_max):
             image = image.to(device=device, dtype=dtype)
