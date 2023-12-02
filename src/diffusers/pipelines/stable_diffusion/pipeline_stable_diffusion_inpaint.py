@@ -749,6 +749,7 @@ class StableDiffusionInpaintPipeline(
 
         if return_image_latents or (latents is None and not is_strength_max):
             image = image.to(device=device, dtype=dtype)
+            print("Image_init_shape=", image.shape)
 
             if image.shape[1] == 4:
                 image_latents = image
