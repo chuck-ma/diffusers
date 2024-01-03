@@ -886,7 +886,7 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
 
         # 8. Add image embeds for IP-Adapter
         added_cond_kwargs = {
-            "image_embeds": image_embeds} if ip_adapter_image is not None else {}
+            "image_embeds": image_embeds} if ip_adapter_image is not None else None
 
         # 9. Denoising loop
         num_warmup_steps = len(timesteps) - \
