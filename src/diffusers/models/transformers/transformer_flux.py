@@ -30,10 +30,24 @@ from diffusers.models.attention_processor import (
     FusedFluxAttnProcessor2_0,
 )
 from diffusers.models.modeling_utils import ModelMixin
-from diffusers.models.normalization import AdaLayerNormContinuous, AdaLayerNormZero, AdaLayerNormZeroSingle
-from diffusers.utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
+from diffusers.models.normalization import (
+    AdaLayerNormContinuous,
+    AdaLayerNormZero,
+    AdaLayerNormZeroSingle,
+)
+from diffusers.utils import (
+    USE_PEFT_BACKEND,
+    is_torch_version,
+    logging,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
 from diffusers.utils.torch_utils import maybe_allow_in_graph
-from diffusers.models.embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
+from diffusers.models.embeddings import (
+    CombinedTimestepGuidanceTextProjEmbeddings,
+    CombinedTimestepTextProjEmbeddings,
+    FluxPosEmbed,
+)
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
 
 
@@ -118,7 +132,9 @@ class FluxTransformerBlock(nn.Module):
             processing of `context` conditions.
     """
 
-    def __init__(self, dim, num_attention_heads, attention_head_dim, qk_norm="rms_norm", eps=1e-6):
+    def __init__(
+        self, dim, num_attention_heads, attention_head_dim, qk_norm="rms_norm", eps=1e-6
+    ):
         super().__init__()
 
         self.norm1 = AdaLayerNormZero(dim)
@@ -149,7 +165,9 @@ class FluxTransformerBlock(nn.Module):
         self.ff = FeedForward(dim=dim, dim_out=dim, activation_fn="gelu-approximate")
 
         self.norm2_context = nn.LayerNorm(dim, elementwise_affine=False, eps=1e-6)
-        self.ff_context = FeedForward(dim=dim, dim_out=dim, activation_fn="gelu-approximate")
+        self.ff_context = FeedForward(
+            dim=dim, dim_out=dim, activation_fn="gelu-approximate"
+        )
 
         # let chunk size default to None
         self._chunk_size = None
@@ -162,10 +180,12 @@ class FluxTransformerBlock(nn.Module):
         temb: torch.FloatTensor,
         image_rotary_emb=None,
     ):
-        norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(hidden_states, emb=temb)
+        norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
+            hidden_states, emb=temb
+        )
 
-        norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = self.norm1_context(
-            encoder_hidden_states, emb=temb
+        norm_encoder_hidden_states, c_gate_msa, c_shift_mlp, c_scale_mlp, c_gate_mlp = (
+            self.norm1_context(encoder_hidden_states, emb=temb)
         )
 
         # Attention.
@@ -180,7 +200,9 @@ class FluxTransformerBlock(nn.Module):
         hidden_states = hidden_states + attn_output
 
         norm_hidden_states = self.norm2(hidden_states)
-        norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+        norm_hidden_states = (
+            norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
+        )
 
         ff_output = self.ff(norm_hidden_states)
         ff_output = gate_mlp.unsqueeze(1) * ff_output
@@ -193,17 +215,22 @@ class FluxTransformerBlock(nn.Module):
         encoder_hidden_states = encoder_hidden_states + context_attn_output
 
         norm_encoder_hidden_states = self.norm2_context(encoder_hidden_states)
-        norm_encoder_hidden_states = norm_encoder_hidden_states * (1 + c_scale_mlp[:, None]) + c_shift_mlp[:, None]
+        norm_encoder_hidden_states = (
+            norm_encoder_hidden_states * (1 + c_scale_mlp[:, None])
+            + c_shift_mlp[:, None]
+        )
 
         context_ff_output = self.ff_context(norm_encoder_hidden_states)
-        encoder_hidden_states = encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
+        encoder_hidden_states = (
+            encoder_hidden_states + c_gate_mlp.unsqueeze(1) * context_ff_output
+        )
         if encoder_hidden_states.dtype == torch.float16:
             encoder_hidden_states = encoder_hidden_states.clip(-65504, 65504)
 
         return encoder_hidden_states, hidden_states
 
 
-class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin): # type: ignore
+class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOriginalModelMixin):  # type: ignore
     """
     The Transformer model introduced in Flux.
 
@@ -240,18 +267,25 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
     ):
         super().__init__()
         self.out_channels = in_channels
-        self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
+        self.inner_dim = (
+            self.config.num_attention_heads * self.config.attention_head_dim
+        )
 
         self.pos_embed = FluxPosEmbed(theta=10000, axes_dim=axes_dims_rope)
 
         text_time_guidance_cls = (
-            CombinedTimestepGuidanceTextProjEmbeddings if guidance_embeds else CombinedTimestepTextProjEmbeddings
+            CombinedTimestepGuidanceTextProjEmbeddings
+            if guidance_embeds
+            else CombinedTimestepTextProjEmbeddings
         )
         self.time_text_embed = text_time_guidance_cls(
-            embedding_dim=self.inner_dim, pooled_projection_dim=self.config.pooled_projection_dim
+            embedding_dim=self.inner_dim,
+            pooled_projection_dim=self.config.pooled_projection_dim,
         )
 
-        self.context_embedder = nn.Linear(self.config.joint_attention_dim, self.inner_dim)
+        self.context_embedder = nn.Linear(
+            self.config.joint_attention_dim, self.inner_dim
+        )
         self.x_embedder = torch.nn.Linear(self.config.in_channels, self.inner_dim)
 
         self.transformer_blocks = nn.ModuleList(
@@ -276,8 +310,12 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
             ]
         )
 
-        self.norm_out = AdaLayerNormContinuous(self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6)
-        self.proj_out = nn.Linear(self.inner_dim, patch_size * patch_size * self.out_channels, bias=True)
+        self.norm_out = AdaLayerNormContinuous(
+            self.inner_dim, self.inner_dim, elementwise_affine=False, eps=1e-6
+        )
+        self.proj_out = nn.Linear(
+            self.inner_dim, patch_size * patch_size * self.out_channels, bias=True
+        )
 
         self.gradient_checkpointing = False
 
@@ -292,7 +330,11 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         # set recursively
         processors = {}
 
-        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+        def fn_recursive_add_processors(
+            name: str,
+            module: torch.nn.Module,
+            processors: Dict[str, AttentionProcessor],
+        ):
             if hasattr(module, "get_processor"):
                 processors[f"{name}.processor"] = module.get_processor()
 
@@ -307,7 +349,9 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
         return processors
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+    def set_attn_processor(
+        self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]
+    ):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -357,7 +401,9 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
 
         for _, attn_processor in self.attn_processors.items():
             if "Added" in str(attn_processor.__class__.__name__):
-                raise ValueError("`fuse_qkv_projections()` is not supported for models having added KV projections.")
+                raise ValueError(
+                    "`fuse_qkv_projections()` is not supported for models having added KV projections."
+                )
 
         self.original_attn_processors = self.attn_processors
 
@@ -435,7 +481,10 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
             # weight the lora layers by setting `lora_scale` for each PEFT layer
             scale_lora_layers(self, lora_scale)
         else:
-            if joint_attention_kwargs is not None and joint_attention_kwargs.get("scale", None) is not None:
+            if (
+                joint_attention_kwargs is not None
+                and joint_attention_kwargs.get("scale", None) is not None
+            ):
                 logger.warning(
                     "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
                 )
@@ -481,14 +530,18 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
 
                     return custom_forward
 
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
-                    hidden_states,
-                    encoder_hidden_states,
-                    temb,
-                    image_rotary_emb,
-                    **ckpt_kwargs,
+                ckpt_kwargs: Dict[str, Any] = (
+                    {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                )
+                encoder_hidden_states, hidden_states = (
+                    torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(block),
+                        hidden_states,
+                        encoder_hidden_states,
+                        temb,
+                        image_rotary_emb,
+                        **ckpt_kwargs,
+                    )
                 )
 
             else:
@@ -501,7 +554,15 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
 
             # controlnet residual
             if controlnet_block_samples is not None:
-                hidden_states = hidden_states + controlnet_block_samples[index_block // interval_control]
+                interval_control = len(self.transformer_blocks) / len(
+                    controlnet_block_samples
+                )
+                interval_control = int(np.ceil(interval_control))
+                print(interval_control, len(controlnet_block_samples))
+                hidden_states = (
+                    hidden_states
+                    + controlnet_block_samples[index_block // interval_control]
+                )
 
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
 
@@ -517,7 +578,9 @@ class FluxTransformer2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin, FromOrig
 
                     return custom_forward
 
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                ckpt_kwargs: Dict[str, Any] = (
+                    {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                )
                 hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(block),
                     hidden_states,
